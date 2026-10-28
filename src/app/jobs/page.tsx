@@ -22,7 +22,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-export default function JobsPage() {
+function JobsContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
 
@@ -354,3 +354,12 @@ export default function JobsPage() {
     </div>
   );
 }
+
+export default function JobsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-slate-500 text-sm">Loading jobs tracker...</div>}>
+      <JobsContent />
+    </React.Suspense>
+  );
+}
+

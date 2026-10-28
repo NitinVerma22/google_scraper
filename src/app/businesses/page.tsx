@@ -22,7 +22,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 
-export default function BusinessesPage() {
+function BusinessesContent() {
   const searchParams = useSearchParams();
   const initialJobId = searchParams.get('jobId') || '';
 
@@ -73,12 +73,12 @@ export default function BusinessesPage() {
 
   const handleExportSelected = async (format: 'CSV' | 'XLSX') => {
     try {
-      await apiClient.post('/api/v1/exports', {
+      const res = await apiClient.post('/api/v1/exports', {
         format,
         businessIds: selectedIds.length > 0 ? selectedIds : undefined,
         jobId: initialJobId || undefined,
       });
-      alert(`Export generated successfully! Download ID: ${res.data.id}. View in Export Center.`);
+      alert(`Export generated successfully! Download ID: ${res.data?.id || 'Ready'}. View in Export Center.`);
     } catch (e: any) {
       alert(`Export failed: ${e.message}`);
     }
@@ -429,3 +429,12 @@ export default function BusinessesPage() {
     </div>
   );
 }
+
+export default function BusinessesPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-slate-500 text-sm">Loading business leads...</div>}>
+      <BusinessesContent />
+    </React.Suspense>
+  );
+}
+
