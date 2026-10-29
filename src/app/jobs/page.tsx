@@ -53,7 +53,8 @@ function JobsContent() {
   useEffect(() => {
     if (!activeJobId) return;
 
-    const eventSource = new EventSource(`http://localhost:4000/api/v1/jobs/${activeJobId}/events`);
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const eventSource = new EventSource(`${apiBase}/api/v1/jobs/${activeJobId}/events`);
 
     eventSource.onmessage = (event) => {
       try {
