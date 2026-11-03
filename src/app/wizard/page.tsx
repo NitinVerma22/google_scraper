@@ -401,17 +401,58 @@ export default function CollectionWizardPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Target Unique Listings (Max 200)
-                </label>
-                <input
-                  type="number"
-                  min="10"
-                  max="200"
-                  value={targetCount}
-                  onChange={(e) => setTargetCount(parseInt(e.target.value, 10))}
-                  className="w-full text-sm rounded-lg border border-slate-300 p-2.5 focus:border-indigo-500 focus:outline-none"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Target Unique Listings (Max 1000)
+                  </label>
+                  <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                    {targetCount} leads
+                  </span>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[50, 100, 250, 500, 1000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setTargetCount(preset)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-all ${
+                        targetCount === preset
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min="10"
+                    max="1000"
+                    step="10"
+                    value={targetCount}
+                    onChange={(e) => setTargetCount(parseInt(e.target.value, 10))}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    value={targetCount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setTargetCount(Math.min(1000, Math.max(1, val)));
+                      }
+                    }}
+                    className="w-full text-sm rounded-lg border border-slate-300 p-2.5 focus:border-indigo-500 focus:outline-none"
+                    placeholder="Enter target count (e.g. 500, 1000)"
+                  />
+                </div>
               </div>
             </div>
 
