@@ -9,16 +9,16 @@ import {
   TrendingUp,
   Phone,
   Globe,
-  Globe2,
   Star,
   Activity,
   PlusCircle,
   Clock,
   CheckCircle2,
-  AlertCircle,
   DollarSign,
   ArrowRight,
-  Layers,
+  Sparkles,
+  Play,
+  Zap,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -54,13 +54,44 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/wizard"
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm px-4 py-2.5 rounded-lg shadow-sm shadow-indigo-100 transition-colors"
+            href="/autonomous"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-md shadow-emerald-100 transition-all"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>New Collection Job</span>
+            <Sparkles className="w-4 h-4 animate-spin" />
+            <span>Autonomous Discovery (1-Click)</span>
+          </Link>
+          <Link
+            href="/wizard"
+            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-xl border border-slate-200 shadow-xs transition-colors"
+          >
+            <PlusCircle className="w-4 h-4 text-indigo-600" />
+            <span>Custom Wizard</span>
           </Link>
         </div>
+      </div>
+
+      {/* Autonomous Discovery Hero Banner */}
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-violet-900 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-6 border border-indigo-700">
+        <div className="space-y-2 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
+            <Zap className="w-3.5 h-3.5 fill-emerald-300" />
+            QR Review Studio Autonomous Engine Active
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+            Find Small Local Businesses Across Lucknow Automatically
+          </h2>
+          <p className="text-xs sm:text-sm text-indigo-200 leading-relaxed">
+            No coordinates or keywords needed. The engine self-plans 85+ Lucknow localities, tessellates 120 overlapping grid cells, enforces Distance-ranked Nearby Searches, and scores prime leads with 0–75 reviews.
+          </p>
+        </div>
+
+        <Link
+          href="/autonomous"
+          className="shrink-0 px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2.5"
+        >
+          <Play className="w-4 h-4 fill-slate-950" />
+          LAUNCH AUTONOMOUS DISCOVERY
+        </Link>
       </div>
 
       {/* KPI Cards Grid */}
@@ -157,8 +188,8 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col">
           <div className="p-5 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Recent Collection Jobs</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Automated Google Places search operations</p>
+              <h2 className="text-base font-bold text-slate-900">Recent Collection Operations</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Automated and autonomous search operations</p>
             </div>
             <Link
               href="/jobs"
@@ -176,6 +207,11 @@ export default function DashboardPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-slate-900 truncate">{job.name}</h3>
+                      {job.isAutonomous && (
+                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
+                          Autonomous
+                        </span>
+                      )}
                       {job.isMockMode && (
                         <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded">
                           Mock Engine
@@ -205,7 +241,7 @@ export default function DashboardPage() {
                       {job.status}
                     </span>
                     <Link
-                      href={`/jobs?highlight=${job.id}`}
+                      href={job.isAutonomous ? `/autonomous` : `/jobs?highlight=${job.id}`}
                       className="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 px-2.5 py-1 rounded-lg"
                     >
                       Inspect

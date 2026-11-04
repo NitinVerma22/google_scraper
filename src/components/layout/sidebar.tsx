@@ -13,11 +13,13 @@ import {
   Settings,
   ShieldCheck,
   Compass,
+  Sparkles,
 } from 'lucide-react';
 
 const navigation = [
+  { name: 'Autonomous Discovery', href: '/autonomous', icon: Sparkles, highlight: true },
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'New Collection Job', href: '/wizard', icon: PlusCircle, highlight: true },
+  { name: 'New Collection Job', href: '/wizard', icon: PlusCircle },
   { name: 'Collection Jobs', href: '/jobs', icon: Activity },
   { name: 'Business Database', href: '/businesses', icon: Building2 },
   { name: 'Advanced Filters', href: '/filters', icon: Filter },
@@ -37,8 +39,8 @@ export default function Sidebar() {
             <Compass className="w-5 h-5" />
           </div>
           <div>
-            <span className="font-bold text-slate-900 tracking-tight text-base block">LeadGen Studio</span>
-            <span className="text-[11px] text-slate-500 font-medium tracking-wide uppercase">Maps Intelligence</span>
+            <span className="font-bold text-slate-900 tracking-tight text-base block">QR Review Studio</span>
+            <span className="text-[11px] text-slate-500 font-medium tracking-wide uppercase">Autonomous Discovery</span>
           </div>
         </div>
 
@@ -59,19 +61,19 @@ export default function Sidebar() {
                   isActive
                     ? 'bg-indigo-50/80 text-indigo-700 shadow-xs border border-indigo-100/60 font-semibold'
                     : item.highlight
-                    ? 'text-indigo-600 hover:bg-indigo-50/50 hover:text-indigo-700'
+                    ? 'text-indigo-600 hover:bg-indigo-50/50 hover:text-indigo-700 font-semibold'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Icon
                   className={`w-4 h-4 ${
-                    isActive ? 'text-indigo-600' : item.highlight ? 'text-indigo-500' : 'text-slate-400'
+                    isActive ? 'text-indigo-600' : item.highlight ? 'text-indigo-500 animate-spin' : 'text-slate-400'
                   }`}
                 />
                 {item.name}
                 {item.highlight && (
-                  <span className="ml-auto text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">
-                    NEW
+                  <span className="ml-auto text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                    LIVE
                   </span>
                 )}
               </Link>
