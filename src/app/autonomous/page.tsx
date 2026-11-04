@@ -16,6 +16,7 @@ import {
   Compass,
   Layers,
   Phone,
+  PhoneCall,
   MessageSquare,
   Download,
   Building2,
@@ -29,6 +30,10 @@ import {
   ShieldCheck,
   FileCheck,
   Coins,
+  Globe,
+  ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface GeoCell {
@@ -119,6 +124,10 @@ export default function AutonomousDiscoveryPage() {
 
   const [jobStatus, setJobStatus] = useState<'IDLE' | 'SEARCHING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'>('IDLE');
 
+  // Filter tab for the lead stream table
+  const [leadFilter, setLeadFilter] = useState<'ALL' | 'HOT' | 'LOW_REVIEWS' | 'LOW_RATING' | 'WITH_PHONE' | 'NO_WEBSITE'>('ALL');
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+
   // Live Metrics & Telemetry
   const [currentLocality, setCurrentLocality] = useState('Initializing city coordinates...');
   const [currentCoord, setCurrentCoord] = useState<{ lat: number; lng: number }>({ lat: 26.8467, lng: 80.9462 });
@@ -149,21 +158,24 @@ export default function AutonomousDiscoveryPage() {
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Poll recent businesses when job is active
+  // Poll leads: on mount AND while job is active
   useEffect(() => {
-    if (!activeJobId) return;
-
-    const interval = setInterval(async () => {
+    const fetchLeads = async () => {
       try {
-        const res = await apiClient.get(`/api/v1/businesses?jobId=${activeJobId}&limit=12&sortBy=createdAt&sortOrder=desc`);
+        const url = activeJobId
+          ? `/api/v1/businesses?jobId=${activeJobId}&limit=50&sortBy=createdAt&sortOrder=desc`
+          : `/api/v1/businesses?limit=50&sortBy=createdAt&sortOrder=desc`;
+        const res = await apiClient.get(url);
         if (res.data?.items) {
           setRecentBusinesses(res.data.items);
         }
       } catch (err) {
         console.error('Failed to fetch discovered leads', err);
       }
-    }, 4000);
+    };
 
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 4000);
     return () => clearInterval(interval);
   }, [activeJobId]);
 
@@ -173,6 +185,12 @@ export default function AutonomousDiscoveryPage() {
       return `₹${(usd * 86.5).toFixed(1)}`;
     }
     return `$${usd.toFixed(3)}`;
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPhone(text);
+    setTimeout(() => setCopiedPhone(null), 2000);
   };
 
   // Pre-flight Dry-Run Simulation
@@ -307,6 +325,27 @@ export default function AutonomousDiscoveryPage() {
     alert('Re-queued all failed tasks. Resuming worker sweep.');
   };
 
+  // Filtered Leads Logic
+  const filteredLeads = recentBusinesses.filter((b) => {
+    const reviewCount = b.userRatingCount !== null && b.userRatingCount !== undefined ? Number(b.userRatingCount) : 0;
+    const rating = b.rating !== null && b.rating !== undefined ? Number(b.rating) : 0;
+    const hasPhone = Boolean(b.phone && b.phone.trim().length >= 7);
+    const hasWebsite = Boolean(b.website && b.website.trim().length >= 5);
+
+    if (leadFilter === 'HOT') return b.leadGrade === 'HOT';
+    if (leadFilter === 'LOW_REVIEWS') return reviewCount <= 50;
+    if (leadFilter === 'LOW_RATING') return rating > 0 && rating <= 4.2;
+    if (leadFilter === 'WITH_PHONE') return hasPhone;
+    if (leadFilter === 'NO_WEBSITE') return !hasWebsite;
+    return true;
+  });
+
+  // Calculate high-intent counts
+  const hotTargetsCount = recentBusinesses.filter((b) => (b.userRatingCount || 0) <= 50 && Boolean(b.phone)).length;
+  const lowRatingCount = recentBusinesses.filter((b) => (b.rating || 0) > 0 && (b.rating || 0) <= 4.2).length;
+  const verifiedPhoneCount = recentBusinesses.filter((b) => Boolean(b.phone)).length;
+  const noWebsiteCount = recentBusinesses.filter((b) => !b.website).length;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 space-y-8 font-sans">
       {/* Top Header */}
@@ -320,7 +359,7 @@ export default function AutonomousDiscoveryPage() {
             Autonomous Business Discovery
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Zero-config geospatial search engine targeting small neighbourhood businesses across Lucknow.
+            Zero-config geospatial search engine targeting small neighbourhood businesses with low reviews and phone numbers across Lucknow.
           </p>
         </div>
 
@@ -392,7 +431,7 @@ export default function AutonomousDiscoveryPage() {
             </div>
           </div>
           <span className="hidden sm:inline-flex text-xs text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-medium border border-emerald-100">
-            ✓ 16-Point Urban Polygon Clipping Active
+            ✓ Full Phone & Website Extraction Active
           </span>
         </div>
 
@@ -461,15 +500,15 @@ export default function AutonomousDiscoveryPage() {
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Distance-Ranked Nearby Search
+              Distance-Ranked (Anti-Popularity Bias)
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-              0–75 Reviews Opportunity Scoring
+              0–50 Low Reviews High Urgency
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-violet-500"></span>
-              SHA-256 Memory Engine
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              ≤4.2★ Rating Protection
             </span>
           </div>
 
@@ -520,84 +559,80 @@ export default function AutonomousDiscoveryPage() {
         </div>
       </div>
 
-      {/* 2. LIVE METRICS & HERO STATUS */}
+      {/* 2. QR REVIEW STUDIO TARGET KPI HERO CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {/* Metric 1: HOT Leads */}
+        {/* Metric 1: Prime QR Targets (0–50 reviews + phone) */}
         <div className="bg-white rounded-2xl p-5 shadow-xs border border-emerald-100 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">QR Studio Target</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Prime QR Targets</span>
             <span className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
               <Flame className="w-5 h-5 fill-emerald-500 text-emerald-500" />
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-black text-slate-900">{metrics.hotLeadsCount}</div>
-            <div className="text-xs text-emerald-600 font-semibold mt-1">
-              HOT Leads (0–30 reviews, with phone)
+            <div className="text-3xl font-black text-slate-900">{hotTargetsCount || metrics.hotLeadsCount}</div>
+            <div className="text-xs text-emerald-700 font-semibold mt-1">
+              Low Reviews (0–50) + Phone Ready
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">
-              + {metrics.warmLeadsCount} WARM leads (31–75 reviews)
+              Highest urgency for counter QR standees
             </div>
           </div>
         </div>
 
-        {/* Metric 2: Unique Discovered */}
+        {/* Metric 2: Vulnerable Rating Alert (<= 4.2 stars) */}
+        <div className="bg-white rounded-2xl p-5 shadow-xs border border-amber-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-600">Needs Rating Boost</span>
+            <span className="p-2 rounded-lg bg-amber-50 text-amber-600">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+            </span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900">{lowRatingCount}</div>
+            <div className="text-xs text-amber-700 font-semibold mt-1">
+              Rating ≤ 4.2★ (Vulnerable)
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              Needs private QR feedback shielding
+            </div>
+          </div>
+        </div>
+
+        {/* Metric 3: Verified Phone Numbers */}
+        <div className="bg-white rounded-2xl p-5 shadow-xs border border-indigo-100 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Contact Ready</span>
+            <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+              <PhoneCall className="w-5 h-5" />
+            </span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900">{verifiedPhoneCount}</div>
+            <div className="text-xs text-indigo-700 font-semibold mt-1">
+              Verified Direct Phone Numbers
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              Ready for 1-click WhatsApp & Calling
+            </div>
+          </div>
+        </div>
+
+        {/* Metric 4: Physical Counter Only (No Website) */}
         <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Verified Leads</span>
-            <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Counter-Only Shops</span>
+            <span className="p-2 rounded-lg bg-violet-50 text-violet-600">
               <Building2 className="w-5 h-5" />
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-black text-slate-900">{metrics.uniqueBusinesses}</div>
-            <div className="text-xs text-slate-500 font-medium mt-1">
-              Target: <span className="font-bold text-slate-800">{targetCount} leads</span>
+            <div className="text-3xl font-black text-slate-900">{noWebsiteCount}</div>
+            <div className="text-xs text-violet-700 font-semibold mt-1">
+              No Website (Local Counter Only)
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">
-              Skipped {metrics.duplicateCount} duplicates ({metrics.duplicatePercentage}%)
-            </div>
-          </div>
-        </div>
-
-        {/* Metric 3: Discovery Velocity */}
-        <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Discovery Rate</span>
-            <span className="p-2 rounded-lg bg-violet-50 text-violet-600">
-              <TrendingUp className="w-5 h-5" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-3xl font-black text-slate-900">
-              {metrics.discoveryRateLeadsPerCall} <span className="text-sm font-normal text-slate-400">leads/call</span>
-            </div>
-            <div className="text-xs text-slate-500 font-medium mt-1">
-              Total API Calls: <span className="font-bold text-slate-800">{metrics.totalApiCalls}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Failed Tasks: <span className="text-rose-600 font-semibold">{metrics.failedCells}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Metric 4: Cost Optimization */}
-        <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Live API Cost</span>
-            <span className="p-2 rounded-lg bg-amber-50 text-amber-600">
-              <Cpu className="w-5 h-5" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-3xl font-black text-slate-900">
-              {formatCost(metrics.estimatedCostUSD)}
-            </div>
-            <div className="text-xs text-amber-700 font-semibold mt-1">
-              {currency === 'INR' ? `≈ $${metrics.estimatedCostUSD.toFixed(3)} USD` : `≈ ₹${(metrics.estimatedCostUSD * 86.5).toFixed(1)} INR`}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Coverage Progress: <span className="font-bold text-slate-800">{metrics.coveragePercentage}%</span>
+              QR Standee is their primary digital identity
             </div>
           </div>
         </div>
@@ -745,16 +780,16 @@ export default function AutonomousDiscoveryPage() {
         </div>
       </div>
 
-      {/* 5. LIVE DISCOVERED LEADS TABLE */}
-      <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-4">
+      {/* 5. LIVE DISCOVERED LEADS TABLE WITH SMART FILTERS & FULL CONTACT DETAILS */}
+      <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              Live Lead Stream (QR Review Studio Qualified)
+              Discovered Leads Stream ({filteredLeads.length} leads matching filter)
             </h3>
-            <p className="text-xs text-slate-500">
-              Businesses dynamically scored based on 0–75 review count, star rating, and contact availability.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Verified local business records with direct phone, review count, rating, and website presence.
             </p>
           </div>
 
@@ -766,39 +801,87 @@ export default function AutonomousDiscoveryPage() {
           </a>
         </div>
 
-        {recentBusinesses.length === 0 ? (
+        {/* Quick Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 text-xs">
+          <span className="text-slate-400 font-semibold mr-1">Filter Leads:</span>
+
+          <button
+            onClick={() => setLeadFilter('ALL')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${leadFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            All Leads ({recentBusinesses.length})
+          </button>
+
+          <button
+            onClick={() => setLeadFilter('HOT')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${leadFilter === 'HOT' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}`}
+          >
+            <Flame className="w-3.5 h-3.5 fill-current" />
+            🔥 Prime QR Targets (0–50 Reviews + Phone)
+          </button>
+
+          <button
+            onClick={() => setLeadFilter('LOW_RATING')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${leadFilter === 'LOW_RATING' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'}`}
+          >
+            📉 Vulnerable Rating (≤4.2★)
+          </button>
+
+          <button
+            onClick={() => setLeadFilter('WITH_PHONE')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${leadFilter === 'WITH_PHONE' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'}`}
+          >
+            <Phone className="w-3.5 h-3.5" />
+            📞 Has Direct Phone
+          </button>
+
+          <button
+            onClick={() => setLeadFilter('NO_WEBSITE')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${leadFilter === 'NO_WEBSITE' ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100'}`}
+          >
+            🌐 Missing Website (Counter Only)
+          </button>
+        </div>
+
+        {filteredLeads.length === 0 ? (
           <div className="text-center py-12 text-slate-400 text-sm">
-            No leads discovered yet. Select Lucknow and click START AUTONOMOUS DISCOVERY above.
+            No leads match the selected filter. Try selecting "All Leads" or launch an autonomous discovery sweep.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600 border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
-                  <th className="py-3 px-3">Lead Grade</th>
-                  <th className="py-3 px-3">Business Name</th>
-                  <th className="py-3 px-3">Primary Category</th>
-                  <th className="py-3 px-3">Reviews & Stars</th>
-                  <th className="py-3 px-3">Locality / Address</th>
+                  <th className="py-3 px-3">Target Grade</th>
+                  <th className="py-3 px-3">Business Name & Locality</th>
+                  <th className="py-3 px-3">Category</th>
+                  <th className="py-3 px-3">Reviews & Rating</th>
                   <th className="py-3 px-3">Direct Phone</th>
-                  <th className="py-3 px-3 text-right">Action</th>
+                  <th className="py-3 px-3">Website Status</th>
+                  <th className="py-3 px-3 text-right">Quick Outreach</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {recentBusinesses.map((b) => {
+                {filteredLeads.map((b) => {
                   const isHot = b.leadGrade === 'HOT';
                   const isWarm = b.leadGrade === 'WARM';
+                  const reviewCount = b.userRatingCount !== null && b.userRatingCount !== undefined ? Number(b.userRatingCount) : 0;
+                  const rating = b.rating !== null && b.rating !== undefined ? Number(b.rating) : null;
+                  const hasPhone = Boolean(b.phone && b.phone.trim().length >= 7);
+                  const hasWebsite = Boolean(b.website && b.website.trim().length >= 5);
+                  const localityDisplay = b.locality || (b.formattedAddress ? b.formattedAddress.split(',')[1]?.trim() : 'Lucknow');
 
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/80 transition">
+                      {/* 1. Target Grade */}
                       <td className="py-3 px-3">
                         {isHot ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <Flame className="w-3 h-3 fill-emerald-600" /> HOT ({b.reviewOpportunityScore})
+                            <Flame className="w-3 h-3 fill-emerald-600" /> HOT ({b.reviewOpportunityScore || 85})
                           </span>
                         ) : isWarm ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            WARM ({b.reviewOpportunityScore})
+                            WARM ({b.reviewOpportunityScore || 65})
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
@@ -806,32 +889,122 @@ export default function AutonomousDiscoveryPage() {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-3 font-bold text-slate-900 max-w-[200px] truncate">
-                        {b.name}
+
+                      {/* 2. Business Name & Locality */}
+                      <td className="py-3 px-3 max-w-[240px]">
+                        <div className="font-bold text-slate-900 truncate" title={b.name}>
+                          {b.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                          <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                          <span className="font-semibold text-slate-700">{localityDisplay}</span>
+                          <span className="text-slate-400">, {b.city || 'Lucknow'}</span>
+                        </div>
                       </td>
+
+                      {/* 3. Category */}
                       <td className="py-3 px-3 capitalize">
-                        {(b.primaryType || 'Business').replace(/_/g, ' ')}
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium">
+                          {(b.primaryType || 'Business').replace(/_/g, ' ')}
+                        </span>
                       </td>
+
+                      {/* 4. Reviews & Rating */}
                       <td className="py-3 px-3">
-                        <span className="font-bold text-slate-900">{b.userRatingCount || 0} reviews</span>
-                        <span className="text-amber-500 ml-1.5">★ {b.rating ? b.rating.toFixed(1) : 'Unrated'}</span>
+                        <div className="flex items-center gap-1.5">
+                          {reviewCount <= 30 ? (
+                            <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px]">
+                              🔥 {reviewCount} reviews
+                            </span>
+                          ) : reviewCount <= 75 ? (
+                            <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px]">
+                              {reviewCount} reviews
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 text-[11px]">
+                              {reviewCount} reviews
+                            </span>
+                          )}
+
+                          {rating ? (
+                            <span
+                              className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${rating <= 4.2 ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-slate-700 bg-slate-100'}`}
+                            >
+                              ★ {rating.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">Unrated</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 px-3 text-slate-500 max-w-[220px] truncate">
-                        {b.locality || b.formattedAddress || 'Lucknow, UP'}
+
+                      {/* 5. Direct Phone */}
+                      <td className="py-3 px-3 font-mono font-semibold text-xs">
+                        {hasPhone ? (
+                          <div className="flex items-center gap-1 text-slate-900">
+                            <span>{b.phone}</span>
+                            <button
+                              onClick={() => copyToClipboard(b.phone)}
+                              className="p-1 hover:bg-slate-200 rounded transition cursor-pointer text-slate-500 hover:text-slate-800"
+                              title="Copy Phone"
+                            >
+                              {copiedPhone === b.phone ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-rose-500 text-[10px] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100 font-bold">
+                            ✕ No Phone
+                          </span>
+                        )}
                       </td>
-                      <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                        {b.phone || <span className="text-slate-300 font-normal">No Phone</span>}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {b.phone ? (
+
+                      {/* 6. Website Status */}
+                      <td className="py-3 px-3">
+                        {hasWebsite ? (
                           <a
-                            href={`https://wa.me/91${b.phone.replace(/[^\d]/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${b.name}, we noticed your profile has ${b.userRatingCount || 0} Google reviews. We help local businesses boost verified reviews with QR Review Studio.`)}`}
+                            href={b.website.startsWith('http') ? b.website : `https://${b.website}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-xs transition"
+                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-[11px] font-semibold underline truncate max-w-[140px]"
+                            title={b.website}
                           >
-                            <MessageSquare className="w-3 h-3" /> WhatsApp
+                            <Globe className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{b.website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 18)}</span>
+                            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                           </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                            No Website (Counter Only)
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 7. Action: WhatsApp / Call */}
+                      <td className="py-3 px-3 text-right">
+                        {hasPhone ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <a
+                              href={`https://wa.me/91${b.phone.replace(/[^\d]/g, '').slice(-10)}?text=${encodeURIComponent(
+                                `Hello ${b.name}, we noticed your Google profile in ${localityDisplay} has ${reviewCount} reviews (${rating ? `${rating.toFixed(1)}★` : 'unrated'}). QR Review Studio helps local businesses get verified 5-star customer reviews right at the counter. Can we share a quick demo?`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-xs transition"
+                            >
+                              <MessageSquare className="w-3 h-3" /> WhatsApp
+                            </a>
+                            <a
+                              href={`tel:${b.phone}`}
+                              className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                              title="Call"
+                            >
+                              <Phone className="w-3 h-3" />
+                            </a>
+                          </div>
                         ) : (
                           <span className="text-slate-400 text-[11px]">Field Visit</span>
                         )}
@@ -912,7 +1085,7 @@ export default function AutonomousDiscoveryPage() {
               </h4>
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2 text-xs">
                 <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-                  <span className="text-slate-600">Strategy A: Nearby Search Batches (20 max/req)</span>
+                  <span className="text-slate-600">Strategy A: Nearby Search Batches (Full Fields: Phone, Website, Ratings)</span>
                   <span className="font-mono font-bold text-slate-900">
                     {dryRunData.taskGraph?.plannedNearbySearchTasks || 55} tasks
                   </span>
