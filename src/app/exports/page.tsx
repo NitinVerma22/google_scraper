@@ -3,10 +3,11 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
-import { FileSpreadsheet, Download, FileText, CheckCircle2, Clock, AlertCircle, Filter, Sparkles, Building2 } from 'lucide-react';
+import { FileSpreadsheet, Download, FileText, CheckCircle2, Clock, AlertCircle, Filter, Sparkles, Building2, Layers } from 'lucide-react';
 
 export default function ExportsPage() {
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [minRating, setMinRating] = useState('');
@@ -25,13 +26,27 @@ export default function ExportsPage() {
     },
   });
 
+  // Fetch collection jobs for dropdown
+  const { data: jobsList = [] } = useQuery<any[]>({
+    queryKey: ['exportJobsSelect'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/api/v1/jobs?limit=50');
+        return res.data?.items || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   // Calculate live matching records count for selected filters
   const { data: matchCount = 0, isLoading: isCountLoading } = useQuery({
-    queryKey: ['exportMatchCount', selectedCategory, selectedCity, minRating, hasPhone],
+    queryKey: ['exportMatchCount', selectedJobId, selectedCategory, selectedCity, minRating, hasPhone],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', '1');
       params.set('limit', '1');
+      if (selectedJobId) params.set('jobId', selectedJobId);
       if (selectedCategory) params.set('category', selectedCategory);
       if (selectedCity) params.set('city', selectedCity);
       if (minRating) params.set('minRating', minRating);
@@ -56,19 +71,37 @@ export default function ExportsPage() {
     try {
       await apiClient.post('/api/v1/exports', {
         format,
+        jobId: selectedJobId || undefined,
         category: selectedCategory || undefined,
         city: selectedCity || undefined,
         minRating: minRating || undefined,
         hasPhone: hasPhone || undefined,
-        selectedFields: ['name', 'primaryType', 'phone', 'website', 'rating', 'userRatingCount', 'city', 'state', 'formattedAddress', 'googleMapsUrl'],
+        selectedFields: [
+          'name',
+          'primaryType',
+          'phone',
+          'website',
+          'rating',
+          'userRatingCount',
+          'reviewOpportunityScore',
+          'leadGrade',
+          'locality',
+          'city',
+          'state',
+          'postalCode',
+          'formattedAddress',
+          'googleMapsUrl',
+        ],
       });
       refetch();
     } catch (e: any) {
-      alert(`Export failed: ${e.message}`);
+      alert(`Export failed: ${e.response?.data?.message || e.message}`);
     } finally {
       setIsExporting(false);
     }
   };
+
+  const selectedJobObj = jobsList.find((j: any) => j.id === selectedJobId);
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -76,7 +109,7 @@ export default function ExportsPage() {
       <div className="border-b border-slate-200 pb-5">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Export Center</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Filter business data by category or location and download verified CSV & Excel spreadsheets
+          Download leads by collection operation, business category or custom filters in CSV & Excel formats
         </p>
       </div>
 
@@ -88,8 +121,8 @@ export default function ExportsPage() {
               <Filter className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Download Data by Category & Filter</h2>
-              <p className="text-xs text-slate-500">Select any category or location to download all matching records</p>
+              <h2 className="text-sm font-bold text-slate-900">Download Data by Collection Job or Filter</h2>
+              <p className="text-xs text-slate-500">Select any collection or apply filters to download verified leads</p>
             </div>
           </div>
 
@@ -101,7 +134,39 @@ export default function ExportsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+        {/* Filter Inputs Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+          {/* Collection Job Dropdown */}
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Filter by Collection Job</span>
+              </span>
+              {selectedJobId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedJobId('')}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-normal hover:underline"
+                >
+                  Clear Selection (Show All Collections)
+                </button>
+              )}
+            </label>
+            <select
+              value={selectedJobId}
+              onChange={(e) => setSelectedJobId(e.target.value)}
+              className="w-full text-xs px-3 py-2.5 rounded-lg border border-indigo-200 bg-white focus:outline-none focus:border-indigo-500 font-medium text-slate-800 shadow-2xs"
+            >
+              <option value="">-- All Collections / Full Database ({jobsList.length} jobs available) --</option>
+              {jobsList.map((job: any) => (
+                <option key={job.id} value={job.id}>
+                  {job.name} ({job.matchedCount} leads) • {job.status} • {new Date(job.createdAt).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Category Dropdown */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -172,10 +237,18 @@ export default function ExportsPage() {
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
           <div className="text-xs text-slate-500">
-            {selectedCategory ? (
-              <span>Target: <strong className="text-slate-800">{selectedCategory.replace(/_/g, ' ')}</strong> ({matchCount} records)</span>
+            {selectedJobObj ? (
+              <span>
+                Selected Collection: <strong className="text-indigo-700">{selectedJobObj.name}</strong> ({matchCount} leads matched)
+              </span>
+            ) : selectedCategory ? (
+              <span>
+                Target: <strong className="text-slate-800">{selectedCategory.replace(/_/g, ' ')}</strong> ({matchCount} records)
+              </span>
             ) : (
-              <span>Target: <strong className="text-slate-800">All Database Records</strong> ({matchCount} records)</span>
+              <span>
+                Target: <strong className="text-slate-800">All Database Records</strong> ({matchCount} records)
+              </span>
             )}
           </div>
 
@@ -215,7 +288,7 @@ export default function ExportsPage() {
               <tr>
                 <th className="py-3 px-4">File Name</th>
                 <th className="py-3 px-4">Format</th>
-                <th className="py-3 px-4">Category / Filter</th>
+                <th className="py-3 px-4">Category / Job Filter</th>
                 <th className="py-3 px-4">Records</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4">Created At</th>
@@ -225,10 +298,10 @@ export default function ExportsPage() {
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {exportsList && exportsList.length > 0 ? (
                 exportsList.map((job: any) => {
-                  const filterInfo = job.filterCriteria?.category
-                    ? `Category: ${job.filterCriteria.category.replace(/_/g, ' ')}`
-                    : job.filterCriteria?.jobId
+                  const filterInfo = job.filterCriteria?.jobId
                     ? `Job: ${job.filterCriteria.jobId.slice(0, 8)}`
+                    : job.filterCriteria?.category
+                    ? `Category: ${job.filterCriteria.category.replace(/_/g, ' ')}`
                     : 'All Records';
 
                   return (
@@ -286,7 +359,7 @@ export default function ExportsPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400">
-                    No export files generated yet. Select a category above and click Download CSV or Excel.
+                    No export files generated yet. Select a collection or category above and click Download CSV or Excel.
                   </td>
                 </tr>
               )}

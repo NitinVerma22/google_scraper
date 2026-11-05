@@ -20,6 +20,9 @@ import {
   AlertCircle,
   Layers,
   ArrowRight,
+  Download,
+  FileSpreadsheet,
+  FileDown,
 } from 'lucide-react';
 
 function JobsContent() {
@@ -28,6 +31,7 @@ function JobsContent() {
 
   const [activeJobId, setActiveJobId] = useState<string | null>(highlightId);
   const [liveEvents, setLiveEvents] = useState<any>(null);
+  const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null);
 
   const { data: jobsData, refetch: refetchJobs } = useQuery({
     queryKey: ['collectionJobs'],
@@ -94,6 +98,38 @@ function JobsContent() {
     }
   };
 
+  const downloadJobLeads = async (jobId: string, jobName: string, format: 'csv' | 'xlsx') => {
+    try {
+      setDownloadingJobId(`${jobId}-${format}`);
+      const res = await apiClient.get(`/api/v1/jobs/${jobId}/export?format=${format}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], {
+        type:
+          format === 'csv'
+            ? 'text/csv'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const sanitizedName = (jobName || 'collection')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+      a.download = `${sanitizedName}_leads_${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e: any) {
+      alert(`Download failed: ${e.response?.data?.message || e.message}`);
+    } finally {
+      setDownloadingJobId(null);
+    }
+  };
+
   const activeJob = activeJobDetails;
 
   return (
@@ -103,7 +139,7 @@ function JobsContent() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Collection Jobs & Live Monitor</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Real-time Server-Sent Events (SSE) background worker tracking and execution stats
+            Real-time Server-Sent Events (SSE) background worker tracking, execution stats & lead exports
           </p>
         </div>
         <Link
@@ -122,7 +158,7 @@ function JobsContent() {
 
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-slate-100">
             <div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping"></span>
                 <h2 className="text-lg font-bold text-slate-900">{activeJob.name}</h2>
                 <span className="text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-2 py-0.5 rounded-full">
@@ -143,7 +179,7 @@ function JobsContent() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {['SEARCHING', 'FETCHING_DETAILS', 'APPLYING_FILTERS', 'PENDING'].includes(activeJob.status) && (
                 <button
                   onClick={() => handleCancel(activeJob.id)}
@@ -166,11 +202,40 @@ function JobsContent() {
 
               <Link
                 href={`/businesses?jobId=${activeJob.id}`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
               >
                 <Eye className="w-3.5 h-3.5" />
                 <span>View Results ({activeJob.matchedCount})</span>
               </Link>
+
+              {/* Dedicated Collection Lead Download Actions */}
+              <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
+                <button
+                  onClick={() => downloadJobLeads(activeJob.id, activeJob.name, 'csv')}
+                  disabled={
+                    downloadingJobId === `${activeJob.id}-csv` ||
+                    (activeJob.matchedCount === 0 && (activeJob._count?.jobResults || 0) === 0)
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Download verified leads in CSV spreadsheet"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{downloadingJobId === `${activeJob.id}-csv` ? 'Exporting...' : 'Download CSV'}</span>
+                </button>
+
+                <button
+                  onClick={() => downloadJobLeads(activeJob.id, activeJob.name, 'xlsx')}
+                  disabled={
+                    downloadingJobId === `${activeJob.id}-xlsx` ||
+                    (activeJob.matchedCount === 0 && (activeJob._count?.jobResults || 0) === 0)
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 text-xs font-semibold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Download verified leads in Excel (XLSX) format"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+                  <span>{downloadingJobId === `${activeJob.id}-xlsx` ? 'Exporting...' : 'Download Excel'}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -183,7 +248,7 @@ function JobsContent() {
                   ? `${liveEvents.percentage}%`
                   : activeJob.status === 'COMPLETED'
                   ? '100%'
-                  : `${Math.round((activeJob.matchedCount / activeJob.targetCount) * 100)}%`}
+                  : `${Math.round((activeJob.matchedCount / (activeJob.targetCount || 1)) * 100)}%`}
               </span>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
@@ -201,7 +266,7 @@ function JobsContent() {
                       ? liveEvents.percentage
                       : activeJob.status === 'COMPLETED'
                       ? 100
-                      : Math.min(Math.round((activeJob.matchedCount / activeJob.targetCount) * 100), 100)
+                      : Math.min(Math.round((activeJob.matchedCount / (activeJob.targetCount || 1)) * 100), 100)
                   }%`,
                 }}
               ></div>
@@ -253,7 +318,10 @@ function JobsContent() {
       {/* All Jobs List */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-base font-bold text-slate-900">All Collection Operations</h2>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">All Collection Operations</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Click CSV or Excel on any row to instantly download that collection&apos;s leads</p>
+          </div>
           <span className="text-xs text-slate-500 font-medium">
             {jobsData?.pagination?.total ?? 0} total jobs
           </span>
@@ -270,7 +338,7 @@ function JobsContent() {
                 <th className="py-3 px-4">Matched</th>
                 <th className="py-3 px-4">API Calls</th>
                 <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-3 px-4 text-right">Actions / Download</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -278,6 +346,7 @@ function JobsContent() {
                 jobsData.items.map((job: any) => {
                   const loc = job.locationConfig || {};
                   const isSelected = activeJobId === job.id;
+                  const hasLeads = (job.matchedCount > 0) || ((job._count?.jobResults || 0) > 0);
 
                   return (
                     <tr
@@ -331,12 +400,33 @@ function JobsContent() {
                         {new Date(job.createdAt).toLocaleDateString()}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => setActiveJobId(job.id)}
-                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                        >
-                          Monitor
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setActiveJobId(job.id)}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+                          >
+                            Monitor
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            onClick={() => downloadJobLeads(job.id, job.name, 'csv')}
+                            disabled={downloadingJobId === `${job.id}-csv` || !hasLeads}
+                            title={hasLeads ? "Download leads as CSV" : "No leads to download"}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2 py-1 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Download className="w-3 h-3 text-emerald-600" />
+                            <span>{downloadingJobId === `${job.id}-csv` ? '...' : 'CSV'}</span>
+                          </button>
+                          <button
+                            onClick={() => downloadJobLeads(job.id, job.name, 'xlsx')}
+                            disabled={downloadingJobId === `${job.id}-xlsx` || !hasLeads}
+                            title={hasLeads ? "Download leads as Excel (XLSX)" : "No leads to download"}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-2 py-1 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <FileSpreadsheet className="w-3 h-3 text-blue-600" />
+                            <span>{downloadingJobId === `${job.id}-xlsx` ? '...' : 'Excel'}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -363,4 +453,3 @@ export default function JobsPage() {
     </React.Suspense>
   );
 }
-
